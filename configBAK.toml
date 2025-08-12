@@ -10,4 +10,3 @@ deliveryTimeLatest = ""
 carshopNotice = ""
 remarks = "--来自Github Action"
 errorTimes = 0
-orderStatus = 0

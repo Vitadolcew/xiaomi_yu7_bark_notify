@@ -33,7 +33,6 @@ def load_config():
             config["notice"]["carshopNotice"],
             config["notice"]["remarks"],
             config["notice"]["errorTimes"],
-            config["notice"]["orderStatus"],
         )
 
     try:
@@ -52,7 +51,6 @@ def load_config():
             config["notice"]["carshopNotice"],
             config["notice"]["remarks"],
             config["notice"]["errorTimes"],
-            config["notice"]["orderStatus"],
         )
     except:
         print("请检查config.toml文件的参数是否完整/正确！")
@@ -108,18 +106,14 @@ def get_order_detail(orderId, userId, Cookie):
     data = response.json().get("data", {})
     logo_link = data.get("backdropPictures", {}).get("backdropPicture", None)
     statusInfo = data.get("statusInfo", {})
+    vid = data.get("buyCarInfo", {}).get("vid", "")
     orderTimeInfo = data.get("orderTimeInfo", {})
 
     order_status_name = statusInfo.get("orderStatusName", None)
     order_status = statusInfo.get("orderStatus")
     delivery_time = orderTimeInfo.get("deliveryTime")
 
-    notice_text = (
-        f"\n\n🛒 延保服务状态：{carshop_notice_text}" if carshop_notice else ""
-    )
-    order_status_text = (
-        f"🛠️ orderStatus：{order_status}【{order_status_mapping(str(order_status))}】"
-    )
+    vid_text = f"🛠️ vid：{vid}【{vid_status_mapping(str(vid))}】"
     remarks_text = " " * 50 + remarks
 
     if not delivery_time:
@@ -146,15 +140,17 @@ def get_order_detail(orderId, userId, Cookie):
         item.get("goodsName", "") for item in data.get("orderItem", [])
     )
     delivery_date_range = calculate_delivery_date(delivery_time, lock_time)
-    text = f"{delivery_date_range}\n\n📅 下定时间：{add_time}\n💳 支付时间：{pay_time}\n🔒 锁单时间：{lock_time}\n\n🛍️ 配置：{goods_names}{notice_text}\n\n{order_status_text}\n\n{remarks_text}"
+    text = f"{delivery_date_range}\n\n📅 下定时间：{add_time}\n💳 支付时间：{pay_time}\n🔒 锁单时间：{lock_time}\n\n🛍️ 配置：{goods_names}\n\n{vid_text}\n\n{remarks_text}"
     # print(text)
 
-    return delivery_time, order_status, text, order_status_name, logo_link
+    return delivery_time, order_status, text, order_status_name, logo_link, vid
 
 
-def order_status_mapping(code):
-    mapping_lists = {"2520": "未下线", "2605": "已下线", "3000": "已运发"}
-    text = mapping_lists.get(code)
+def vid_status_mapping(vid):
+    if vid.startswith("HXM"):
+        text = "已下线"
+    else:
+        text = "未下线"
     return text
 
 
@@ -237,10 +233,10 @@ def send_bark_message(token, message, logo_link=None, order_status_name=None):
 
     data = {
         "body": message,
+        "group": "小米汽车通知",
         "title": title,
         "subtitle": f"📦 交付进度：{delivery_time}",
         "icon": icon_link,
-        "group": "test",
         "isArchive": 1,
     }
     if badge_week:
@@ -255,11 +251,14 @@ def send_bark_message(token, message, logo_link=None, order_status_name=None):
 
 
 def main():
-    if (
-        (delivery_time != old_delivery_time)
-        or (carshop_notice != old_carshop_notice)
-        or (order_status != old_order_status)
-    ):
+    if vid.startswith("HXM"):
+        if send_bark_message(device_token, message, logo_link, order_status_name):
+            print("vid状态已更新，消息已发送成功！")
+        else:
+            print("vid状态已更新，消息发送失败。")
+        sys.exit()
+
+    if (delivery_time != old_delivery_time) or (carshop_notice != old_carshop_notice):
         save_config(
             delivery_time, order_status, carshop_notice=carshop_notice
         )  # 更新配置文件
@@ -268,7 +267,7 @@ def main():
         else:
             print("消息发送失败。")
     else:
-        print("交付时间/延保服务/orderStatus状态没有更新。")
+        print("交付时间/vid没有更新。")
 
 
 if __name__ == "__main__":
@@ -296,10 +295,9 @@ if __name__ == "__main__":
         old_carshop_notice,
         remarks,
         error_times,
-        old_order_status,
     ) = load_config()
     carshop_notice, carshop_notice_text = get_carshop_info(carshop_cookie)
-    delivery_time, order_status, message, order_status_name, logo_link = (
+    delivery_time, order_status, message, order_status_name, logo_link, vid = (
         get_order_detail(orderId, userId, Cookie)
     )
 
